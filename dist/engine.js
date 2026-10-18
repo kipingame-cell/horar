@@ -28,14 +28,14 @@ function validate(input){if(typeof input?.question!=='string'||!input.question.t
  if(!Number.isFinite(input.lat)||Math.abs(input.lat)>65)throw Error('Поддерживаются широты от −65° до +65°. Полярные карты пока не рассчитываются.');
  if(!Number.isFinite(input.lon)||Math.abs(input.lon)>180)throw Error('Долгота должна быть от −180° до +180°.');
  if(!['regio','equal','whole'].includes(input.system))throw Error('Неизвестная система домов.');
- if(!Number.isInteger(input.target)||input.target<2||input.target>12)throw Error('Выберите дом предмета вопроса.');return date;}
+ if(!Number.isInteger(input.target)||input.target<(input.analysisVersion===2||input.context?1:2)||input.target>12)throw Error('Выберите дом предмета вопроса.');return date;}
 function aspectMotion(l1,l2,v1,v2,angle){
  const distance=delta(l1,l2),target=angle===180?180:(distance<0?-angle:angle),error=delta(distance,target),rate=v1-v2;
  const phase=Math.abs(error)<1e-6?'exact':Math.abs(rate)<1e-7?'stationary':error*rate<0?'applying':'separating';
  return {phase,applying:phase==='applying'};
 }
 const phaseLabel=p=>({applying:'Сходится',separating:'Расходится',exact:'Точный аспект',stationary:'Почти неподвижен'})[p]||'Не определено';
-function calculate(input){const date=validate(input),h=houses(date,input.lat,input.lon,input.system);
+function calculate(input){if(input.analysisVersion===2){const X=typeof module==='object'?require('./analysis'):root.HorarAnalysis;const prepared=X.prepare(input);const base=calculate({...prepared,analysisVersion:1});base.input.analysisVersion=2;return X.enrich(base);}const date=validate(input),h=houses(date,input.lat,input.lon,input.system);
  const planets=bodies.map((b,i)=>{const l=longitude(i,date),speed=delta(longitude(i,new Date(+date+60000)),longitude(i,new Date(+date-60000)))*720;return {i,name:names[i],glyph:glyphs[i],lon:l,sign:Math.floor(l/30),speed,retro:speed<0,house:houseOf(l,h.cusps),dignity:dignity(i,l)};});
  const pairs=[];for(let i=0;i<7;i++)for(let j=i+1;j<7;j++){const sep=Math.abs(delta(planets[i].lon,planets[j].lon));for(const a of aspects){const orb=Math.abs(sep-a.angle),limit=(i<2||j<2)?8:6;if(orb>limit)continue;
  pairs.push({i,j,...a,orb,...aspectMotion(planets[i].lon,planets[j].lon,planets[i].speed,planets[j].speed,a.angle)});}}
@@ -55,5 +55,6 @@ function lunarEvents(chart){const start=+new Date(chart.date),moon0=chart.planet
  for(let t=start+step;t<=ingress;t+=step){if(Math.floor(longitude(1,new Date(t))/30)!==sign){let lo=prevTime,hi=t;for(let k=0;k<25;k++){const m=(lo+hi)/2;if(Math.floor(longitude(1,new Date(m))/30)===sign)lo=m;else hi=m;}ingress=hi;break;}prevTime=t;}
  const events=[];for(let i=0;i<7;i++){if(i===1)continue;let t0=start,d0=delta(moon0,chart.planets[i].lon);for(let t=start+step;t<=ingress+step;t+=step){const t1=Math.min(t,ingress-1),d1=delta(longitude(1,new Date(t1)),longitude(i,new Date(t1)));for(const a of aspects)for(const target of a.angle===0||a.angle===180?[a.angle]:[a.angle,-a.angle]){const e0=delta(d0,target),e1=delta(d1,target);if(e0*e1<0&&Math.abs(e1-e0)<30){let lo=t0,hi=t1,left=e0;for(let k=0;k<22;k++){const m=(lo+hi)/2,e=delta(delta(longitude(1,new Date(m)),longitude(i,new Date(m))),target);if(left*e<=0)hi=m;else {lo=m;left=e;}}events.push({i,name:a.name,utc:new Date((lo+hi)/2).toISOString()});}}d0=d1;t0=t1;if(t1>=ingress-1)break;}}
  return {ingress:new Date(ingress).toISOString(),events:events.sort((a,b)=>a.utc.localeCompare(b.utc)),void:events.length===0};}
-const api={calculate,lunarEvents,houses,longitude,mod,delta,names,glyphs,signs,rulers,aspects,houseOf,validate,aspectMotion,phaseLabel};if(typeof module==='object')module.exports=api;else root.Horar=api;
+function sunAboveHorizon(date,lat,lon){const observer=new A.Observer(lat,lon,0),eq=A.Equator('Sun',date,observer,true,true);return A.Horizon(date,observer,eq.ra,eq.dec).altitude>=0;}
+const api={sunAboveHorizon,calculate,lunarEvents,houses,longitude,mod,delta,names,glyphs,signs,rulers,aspects,houseOf,validate,aspectMotion,phaseLabel};if(typeof module==='object')module.exports=api;else root.Horar=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

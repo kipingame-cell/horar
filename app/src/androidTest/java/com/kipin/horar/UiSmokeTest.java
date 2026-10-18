@@ -58,6 +58,12 @@ public class UiSmokeTest extends Instrumentation {
   js("page('guide');document.getElementById('glossary-search').value='рецепция';document.getElementById('glossary-search').dispatchEvent(new Event('input'))");check("glossary search","document.querySelectorAll('#glossary-list details').length===1 && document.getElementById('glossary-list').textContent.includes('Рецепция')");js("document.querySelector('#glossary-list details').open=true;document.querySelector('.glossary').scrollIntoView({block:'start',behavior:'instant'})");screenshot("05-glossary");
   runOnMainSync(()->activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));awaitCondition("innerWidth>innerHeight");check("landscape fits viewport","document.documentElement.scrollWidth<=innerWidth+1");check("journal remains after rotation","readEntries().length===1");screenshot("06-landscape");
   runOnMainSync(()->activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));awaitCondition("innerHeight>innerWidth");
+  js("page('workspace');document.getElementById('topic-mode').value='auto';document.getElementById('actor-input').value='auto';document.getElementById('question').value='Получу ли я должность?';classifyDraft();document.getElementById('chart-form').requestSubmit()");
+  check("extended question analysis uses job house", "current.input.target===10 && current.analysis.version===2 && current.analysis.checks.length===7");
+  check("plain and technical verdict agree", "HorarSimple.explain(current).title===current.verdict && document.getElementById('analysis-detail').textContent.includes(current.verdict)");
+  js("document.getElementById('actor-input').value='11';classifyDraft();document.getElementById('chart-form').requestSubmit()");
+  check("derived job of friend uses eleventh and eighth houses", "current.analysis.actorHouse===11 && current.input.target===8");
+  js("document.getElementById('analysis-detail').scrollIntoView({block:'start',behavior:'instant'})");screenshot("10-extended-analysis");
   js("page('workspace');document.getElementById('question').value='';document.getElementById('chart-form').requestSubmit()");check("required question validation","!document.getElementById('question').checkValidity()");
   result.putString("stream","\n"+results+"HORAR_SMOKE_OK checks="+passed+"\n");finish(Activity.RESULT_OK,result);
  }catch(Throwable t){result.putString("stream","\n"+results+"HORAR_SMOKE_FAILED: "+t.toString()+"\n");try{screenshot("failure");}catch(Exception ignored){}finish(Activity.RESULT_CANCELED,result);}}
