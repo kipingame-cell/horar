@@ -15,6 +15,10 @@ public class MainActivity extends Activity {
   LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.rgb(244,241,233));
   root.setOnApplyWindowInsetsListener((v,insets)->{v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());return insets;});
   web=new WebView(this);root.addView(web,new LinearLayout.LayoutParams(-1,-1));setContentView(root);root.requestApplyInsets();
+  web.setHorizontalScrollBarEnabled(false);
+  int barFlags=View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+  if(Build.VERSION.SDK_INT>=27){barFlags|=View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;getWindow().setNavigationBarColor(Color.rgb(244,241,233));}
+  getWindow().getDecorView().setSystemUiVisibility(barFlags);
   web.getSettings().setJavaScriptEnabled(true);web.getSettings().setDomStorageEnabled(true);web.getSettings().setAllowFileAccess(false);web.getSettings().setAllowContentAccess(true);web.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
   web.addJavascriptInterface(new ShareBridge(),"Android");
   web.setWebViewClient(new WebViewClient(){
