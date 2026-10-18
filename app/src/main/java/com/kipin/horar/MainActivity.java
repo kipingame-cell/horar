@@ -10,14 +10,14 @@ import android.widget.*;
 import java.io.*;
 
 public class MainActivity extends Activity {
- private WebView web; private ValueCallback<Uri[]> fileCallback; private String pendingExport;
+ private WebView web; private ValueCallback<Uri[]> fileCallback; private String pendingExport; private boolean pendingPdf;
  @Override public void onCreate(Bundle saved){super.onCreate(saved);
-  LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.rgb(244,241,233));
+  LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.rgb(10,12,22));
   root.setOnApplyWindowInsetsListener((v,insets)->{v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());return insets;});
   web=new WebView(this);root.addView(web,new LinearLayout.LayoutParams(-1,-1));setContentView(root);root.requestApplyInsets();
   web.setHorizontalScrollBarEnabled(false);
-  int barFlags=View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-  if(Build.VERSION.SDK_INT>=27){barFlags|=View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;getWindow().setNavigationBarColor(Color.rgb(244,241,233));}
+  int barFlags=0;
+  if(Build.VERSION.SDK_INT>=27){getWindow().setNavigationBarColor(Color.rgb(10,12,22));}
   getWindow().getDecorView().setSystemUiVisibility(barFlags);
   web.getSettings().setJavaScriptEnabled(true);web.getSettings().setDomStorageEnabled(true);web.getSettings().setAllowFileAccess(false);web.getSettings().setAllowContentAccess(true);web.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
   web.addJavascriptInterface(new ShareBridge(),"Android");
@@ -32,13 +32,15 @@ public class MainActivity extends Activity {
   if(saved==null||web.restoreState(saved)==null)web.loadUrl("https://app.local/index.html");
  }
  private WebResourceResponse blocked(){return new WebResourceResponse("text/plain","UTF-8",404,"Not found",java.util.Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
- @Override protected void onActivityResult(int req,int result,Intent data){super.onActivityResult(req,result,data);if(req==101){if(result==RESULT_OK&&data!=null&&pendingExport!=null){try(OutputStream stream=getContentResolver().openOutputStream(data.getData())){if(stream==null)throw new IOException("No stream");stream.write(pendingExport.getBytes(java.nio.charset.StandardCharsets.UTF_8));Toast.makeText(this,"Файл сохранён",Toast.LENGTH_SHORT).show();}catch(IOException e){Toast.makeText(this,"Не удалось сохранить файл",Toast.LENGTH_LONG).show();}}pendingExport=null;}if(req==100&&fileCallback!=null){fileCallback.onReceiveValue(result==RESULT_OK&&data!=null?new Uri[]{data.getData()}:null);fileCallback=null;}}
+ @Override protected void onActivityResult(int req,int result,Intent data){super.onActivityResult(req,result,data);if(req==101){if(result==RESULT_OK&&data!=null&&pendingExport!=null){try(OutputStream stream=getContentResolver().openOutputStream(data.getData())){if(stream==null)throw new IOException("No stream");stream.write(pendingPdf?android.util.Base64.decode(pendingExport,android.util.Base64.DEFAULT):pendingExport.getBytes(java.nio.charset.StandardCharsets.UTF_8));Toast.makeText(this,"Файл сохранён",Toast.LENGTH_SHORT).show();}catch(IOException e){Toast.makeText(this,"Не удалось сохранить файл",Toast.LENGTH_LONG).show();}}pendingExport=null;}if(req==100&&fileCallback!=null){fileCallback.onReceiveValue(result==RESULT_OK&&data!=null?new Uri[]{data.getData()}:null);fileCallback=null;}}
  @Override protected void onSaveInstanceState(Bundle out){web.saveState(out);super.onSaveInstanceState(out);}
  @Override public void onBackPressed(){web.evaluateJavascript("document.querySelector('.nav.active').dataset.page",value->{if(!"\"workspace\"".equals(value))web.evaluateJavascript("page('workspace')",null);else if(web.canGoBack())web.goBack();else super.onBackPressed();});}
  private String assetText(String path,boolean gzip)throws IOException{try(InputStream raw=getAssets().open("www/"+path);InputStream in=gzip?new java.util.zip.GZIPInputStream(raw):raw;ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1)out.write(buffer,0,n);return out.toString("UTF-8");}}
  public class ShareBridge{
+ @JavascriptInterface public void savePdf(String name,String base64){if(base64==null||base64.length()>24000000)return;runOnUiThread(()->{if(pendingExport!=null)return;pendingPdf=true;pendingExport=base64;Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/pdf");i.putExtra(Intent.EXTRA_TITLE,name);try{startActivityForResult(i,101);}catch(ActivityNotFoundException e){pendingExport=null;Toast.makeText(MainActivity.this,"Нет приложения для сохранения PDF",Toast.LENGTH_LONG).show();}});}
+
  @JavascriptInterface public String placeWorkerSource(){try{return assetText("places.js",false)+"\n"+assetText("places-worker.js",false).replace("importScripts('places.js');","");}catch(IOException e){throw new IllegalStateException("Offline search script unavailable",e);}}
  @JavascriptInterface public String placeData(int index){try{if(index==-1)return assetText("data/places-meta.json",false);if(index<0||index>=43)throw new IllegalArgumentException("Invalid place shard");return assetText(String.format(java.util.Locale.ROOT,"data/places-%02d.bin",index),true);}catch(IOException e){throw new IllegalStateException("Offline places unavailable",e);}}
-@JavascriptInterface public void share(String name,String text,String type){if(text==null||text.length()>6000000)return;runOnUiThread(()->{pendingExport=text;Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/json".equals(type)?"application/json":"text/plain");i.putExtra(Intent.EXTRA_TITLE,name);try{startActivityForResult(i,101);}catch(ActivityNotFoundException e){pendingExport=null;Toast.makeText(MainActivity.this,"Нет приложения для сохранения файла",Toast.LENGTH_LONG).show();}});}}
+@JavascriptInterface public void share(String name,String text,String type){if(text==null||text.length()>6000000)return;runOnUiThread(()->{pendingPdf=false;pendingExport=text;Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/json".equals(type)?"application/json":"text/plain");i.putExtra(Intent.EXTRA_TITLE,name);try{startActivityForResult(i,101);}catch(ActivityNotFoundException e){pendingExport=null;Toast.makeText(MainActivity.this,"Нет приложения для сохранения файла",Toast.LENGTH_LONG).show();}});}}
  @Override protected void onDestroy(){if(fileCallback!=null)fileCallback.onReceiveValue(null);if(web!=null){web.removeJavascriptInterface("Android");web.destroy();}super.onDestroy();}
 }
