@@ -32,15 +32,43 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: horar-test-signing-v1
-      - run: gradle assembleDebug lintDebug --console=plain
+      - run: gradle assembleDebug assembleDebugAndroidTest lintDebug --console=plain
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Test installed APK on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell wm size 1080x2400
+            adb shell wm density 420
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w com.kipin.horar.test/com.kipin.horar.UiSmokeTest | tee smoke-result.txt
+            adb pull /sdcard/Android/data/com.kipin.horar/files/screenshots ui-screenshots
+            grep -q HORAR_SMOKE_OK smoke-result.txt
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Horar-Android-test-evidence
+          path: |
+            ui-screenshots
+            smoke-result.txt
+            app/build/reports/lint-results-debug.html
       - name: Package
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Horar-1.0.0.apk
-          zip -r Horar-1.0.0-web.zip dist
-          sha256sum Horar-1.0.0.apk Horar-1.0.0-web.zip > SHA256SUMS.txt
+          cp app/build/outputs/apk/debug/app-debug.apk Horar-1.1.0.apk
+          zip -r Horar-1.1.0-web.zip dist
+          zip -r Horar-1.1.0-test-evidence.zip ui-screenshots smoke-result.txt app/build/reports/lint-results-debug.html
+          sha256sum Horar-1.1.0.apk Horar-1.1.0-web.zip > SHA256SUMS.txt
       - name: Publish installable APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v1.0.0-build.${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Horar-1.0.0.apk Horar-1.0.0-web.zip SHA256SUMS.txt --target "$GITHUB_SHA" --title "Хорар 1.0 · сборка ${GITHUB_RUN_NUMBER}" --notes-file docs/RELEASE.md
+          TAG="v1.1.0-build.${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" Horar-1.1.0.apk Horar-1.1.0-web.zip Horar-1.1.0-test-evidence.zip SHA256SUMS.txt --target "$GITHUB_SHA" --title "Хорар 1.1 · сборка ${GITHUB_RUN_NUMBER}" --notes-file docs/RELEASE.md
