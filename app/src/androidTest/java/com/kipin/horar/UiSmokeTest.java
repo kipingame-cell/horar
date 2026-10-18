@@ -25,7 +25,7 @@ public class UiSmokeTest extends Instrumentation {
  private void screenshot(String name)throws Exception{Thread.sleep(350);Bitmap b=getUiAutomation().takeScreenshot();if(b==null)throw new Exception("Screenshot unavailable");File dir=getTargetContext().getExternalFilesDir("screenshots");if(dir==null)throw new Exception("Screenshot dir unavailable");dir.mkdirs();try(FileOutputStream out=new FileOutputStream(new File(dir,name+".png"))){b.compress(Bitmap.CompressFormat.PNG,100,out);}b.recycle();}
  @Override public void onStart(){Bundle result=new Bundle();try{
   Intent launch=new Intent(getTargetContext(),MainActivity.class);launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);activity=startActivitySync(launch);runOnMainSync(()->web=findWeb(activity.getWindow().getDecorView()));if(web==null)throw new Exception("No WebView");ready();
-  js("localStorage.removeItem('horar.journal.v1')");runOnMainSync(()->web.reload());Thread.sleep(500);ready();
+  js("localStorage.removeItem('horar.journal.v1');sessionStorage.clear()");runOnMainSync(()->web.reload());Thread.sleep(500);ready();
   check("production release is not debuggable", "true");if((activity.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0)throw new Exception("APK is debuggable");
   check("offline modules loaded","typeof Horar.calculate==='function' && typeof HorarReading.explain==='function' && typeof HorarJournal.parse==='function'");
   check("empty journal","readEntries().length===0");check("portrait page fits viewport","document.documentElement.scrollWidth<=innerWidth+1");screenshot("01-home");
@@ -39,6 +39,14 @@ public class UiSmokeTest extends Instrumentation {
   js("document.getElementById('moment').value='2026-10-18T17:00';document.getElementById('offset').value='3';document.getElementById('lat').value='55.7558';document.getElementById('lon').value='37.6173';document.getElementById('target').value='7';document.getElementById('system').value='regio';");tap("#calculate");
   awaitCondition("current!==null && current.lunar!==undefined");check("chart calculation and table","!document.getElementById('results').hidden && document.querySelectorAll('#planet-table tr').length===7");check("eight contextual explanations","document.querySelectorAll('#explanation details').length===8");check("exact UTC conversion","current.date==='2026-10-18T14:00:00.000Z'");check("Moon event computed","current.lunar.events.length>0");
   js("document.getElementById('wheel').scrollIntoView({block:'center',behavior:'instant'})");screenshot("02-chart");
+  check("beginner explanation visible","!document.getElementById('simple-reading').hidden && document.getElementById('technical-reading').hidden && document.querySelectorAll('.simple-section').length===8");
+  js("switchMode('pro')");check("first result synced to pro","current.input.question==='Meeting this week?' && !document.getElementById('technical-reading').hidden");
+  js("document.getElementById('question').value='Second question';document.getElementById('chart-form').requestSubmit()");check("second calculation stays in pro","current.input.question==='Second question'");
+  js("switchMode('beginner')");check("beginner keeps first result","current.input.question==='Meeting this week?'");
+  js("document.getElementById('share-result').click();document.getElementById('copy-share').click()");check("share link roundtrip","HorarShare.parse(new URL(document.getElementById('share-url').value).hash).question===current.input.question && typeof Android.shareLink==='function' && typeof Android.copyLink==='function'");
+  js("document.getElementById('simple-reading').scrollIntoView({block:'start',behavior:'instant'})");screenshot("09-beginner");
+  js("switchMode('pro')");check("pro keeps independent result","current.input.question==='Second question'");
+  js("switchMode('beginner')");
   js("document.getElementById('explanation').scrollIntoView({block:'start',behavior:'instant'})");screenshot("03-explanations");
   tap("#save");tap("#save");check("repeat save does not duplicate","readEntries().length===1");js("page('journal');document.querySelector('[data-outcome]').value='Meeting happened';document.querySelector('[data-note]').click()");check("outcome saved","readEntries()[0].outcome==='Meeting happened'");screenshot("04-journal");
   runOnMainSync(()->web.reload());Thread.sleep(500);ready();check("journal survives reload","readEntries().length===1 && readEntries()[0].outcome==='Meeting happened'");js("page('journal');document.querySelector('[data-open]').click()");awaitCondition("current!==null && current.lunar!==undefined");check("saved chart restores date and result","document.getElementById('moment').value==='2026-10-18T17:00' && current.planets.length===7");
