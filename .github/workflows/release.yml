@@ -29,6 +29,19 @@ jobs:
         with:
           gradle-version: '8.13'
       - run: gradle assembleRelease assembleReleaseAndroidTest lintRelease --console=plain
+      - name: Verify offline catalog is packaged in release APK
+        run: |
+          python - <<'PYTHON'
+          import zipfile,json,gzip
+          with zipfile.ZipFile('app/build/outputs/apk/release/app-release-unsigned.apk') as apk:
+              meta=json.loads(apk.read('assets/www/data/places-meta.json'))
+              count=0
+              for name in meta['files']:
+                  raw=apk.read('assets/www/data/'+name.replace('.json.gz','.bin'))
+                  count+=len(json.loads(gzip.decompress(raw)))
+              assert count==meta['count'],(count,meta['count'])
+              print('Verified bundled settlements:',count)
+          PYTHON
       - name: Prepare temporary signatures for instrumenting the release binary
         run: |
           keytool -genkeypair -keystore "$RUNNER_TEMP/instrumentation.p12" -storetype PKCS12 -storepass android -keypass android -alias test -keyalg RSA -validity 2 -dname "CN=Instrumentation Only"
@@ -55,7 +68,7 @@ jobs:
             adb install -r instrumentation.apk
             adb shell am instrument -w com.kipin.horar.test/com.kipin.horar.UiSmokeTest | tee smoke-result.txt
             adb pull /sdcard/Android/data/com.kipin.horar/files/screenshots ui-screenshots
-            adb logcat -d -t 1500 > android-logcat.txt
+            adb logcat -d > android-logcat.txt
             grep -q HORAR_SMOKE_OK smoke-result.txt
       - name: Preserve test evidence
         if: always()
