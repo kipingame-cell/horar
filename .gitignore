@@ -1,0 +1,12 @@
+node_modules/
+vendor/
+*.tgz
+*.zip
+.gradle/
+build/
+app/build/
+local.properties
+.openai/*.local.*
+app/src/main/assets/
+*.jks
+*.keystore
