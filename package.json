@@ -1,1 +1,1 @@
-{"name":"horar","version":"1.1.0","private":true,"description":"Offline horary chart for Android and Web","scripts":{"test":"node --test tests/*.test.js","build":"node scripts/sync-android.js"}}
+{"name":"horar","version":"1.2.0","private":true,"description":"Offline horary chart for Android and Web","scripts":{"test":"node --test tests/*.test.js","build":"node scripts/sync-android.js"}}
