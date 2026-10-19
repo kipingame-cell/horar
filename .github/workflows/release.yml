@@ -87,8 +87,8 @@ jobs:
           cp app/build/outputs/apk/release/app-release-unsigned.apk release-input/
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" release-input/
           cp apk-badging.txt release-input/
-          zip -r release-input/Horar-1.6.0-test-evidence.zip ui-screenshots smoke-result.txt apk-badging.txt app/build/reports/lint-results-release.html
-          zip -r release-input/Horar-1.6.0-web.zip dist
+          zip -r release-input/Horar-1.7.0-test-evidence.zip ui-screenshots smoke-result.txt apk-badging.txt app/build/reports/lint-results-release.html
+          zip -r release-input/Horar-1.7.0-web.zip dist
       - uses: actions/upload-artifact@v4
         with:
           name: Horar-release-signing-input

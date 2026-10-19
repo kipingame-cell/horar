@@ -1,65 +1,88 @@
-/* Version 3: event-based routes. Version 2 is retained for saved-chart reproducibility. */
+/* Method 4: declared traditional rules; versions 2/3 remain reproducible. */
 (function(root){'use strict';
-const H=typeof module==='object'?require('./engine'):root.Horar,V=typeof module==='object'?require('./analysis-v2'):root.HorarAnalysisV2,DAY=86400000;
-const pair=(e,i,j)=>e.i===Math.min(i,j)&&e.j===Math.max(i,j),has=(e,i)=>e.i===i||e.j===i,stamp=e=>+new Date(e.utc);
-const names={direct:'Прямой аспект',lunar:'Луна к цели',translation:'Передача света',collection:'Собирание света',antiscia:'Антисы',mutual:'Взаимная рецепция',prohibition:'Запрет',frustration:'Фрустрация',refranation:'Рефранация'};
-function speed(i,t,longitude=H.longitude){return H.delta(longitude(i,new Date(t+60000)),longitude(i,new Date(t-60000)))*720;}
-function motion(c,i,j,angle){return H.aspectMotion(c.planets[i].lon,c.planets[j].lon,c.planets[i].speed,c.planets[j].speed,angle);}
-function clean(future,ids,from,to){return (future.changes||[]).filter(e=>ids.includes(e.i)&&stamp(e)>from&&stamp(e)<to);}
-function eventPlanet(e,i){return e.i===i?e.lonI:e.lonJ;}
-function obstructions(c,future,event,from,to,participants=[]){const start=+new Date(c.date),end=stamp(event),out=[];if(!event||from===to||motion(c,from,to,event.angle).phase!=='applying')return out;
- const faster=Math.abs(c.planets[from].speed)>=Math.abs(c.planets[to].speed)?from:to,slower=faster===from?to:from;
- for(let k=0;k<7;k++){if([from,to,...participants].includes(k))continue;const hit=future.events.find(e=>has(e,slower)&&has(e,k)&&stamp(e)>start&&stamp(e)<end);if(!hit||clean(future,[slower,k],start,stamp(hit)).length)continue;
- if(Math.abs(c.planets[k].speed)>Math.abs(c.planets[faster].speed)&&motion(c,k,slower,hit.angle).phase==='applying')out.push({type:'prohibition',via:k,event:hit,detail:`Более быстрая ${H.names[k]} достигает ${H.names[slower]} раньше ${H.names[faster]}.`});
- else if(event.angle===0&&hit.angle===0&&Math.abs(c.planets[slower].speed)>Math.abs(c.planets[k].speed)&&motion(c,slower,k,0).phase==='applying')out.push({type:'frustration',via:k,event:hit,detail:`${H.names[slower]} соединяется с ${H.names[k]} до соединения с ${H.names[faster]}.`});}
- return out;}
-function refrenations(c,future,longitude=H.longitude){const start=+new Date(c.date),end=start+(c.input.horizon===90?90:30)*DAY,result=[];
- for(const a of c.pairs){if(a.phase!=='applying'||!([a.i,a.j].some(i=>[c.querent,c.subject,1].includes(i))))continue;const first=future.events.find(e=>pair(e,a.i,a.j)&&e.angle===a.angle),limit=first?stamp(first):end,stations=future.changes.filter(e=>[a.i,a.j].includes(e.i)&&e.type==='station'&&stamp(e)>start&&stamp(e)<limit);if(!stations.length)continue;
- const sign=H.delta(c.planets[a.i].lon,c.planets[a.j].lon)<0?-1:1,target=a.angle===180?180:sign*a.angle;
- const error=t=>H.delta(H.delta(longitude(a.i,new Date(t)),longitude(a.j,new Date(t))),target),rate=t=>speed(a.i,t,longitude)-speed(a.j,t,longitude),initial=error(start);
- for(const station of stations){const probe=Math.min(stamp(station)+DAY/4,limit-1000),e=error(probe);if(initial*rate(start)<0&&e*rate(probe)>0&&initial*e>0&&Math.abs(e-initial)<30){result.push({type:'refranation',i:a.i,j:a.j,angle:a.angle,event:station,utc:new Date(probe).toISOString(),detail:`Около станции ${H.names[station.i]} схождение ${H.names[a.i]} — ${H.names[a.j]} сменяется расхождением до точности.`});break;}}}
- return result;}
-function planPaths(c,future,past={events:[],changes:[]}){const start=+new Date(c.date),q=c.querent,s=c.subject,paths=[],rejected=[];
- function candidate(type,legs,ids,via=null,extra={}){const event=legs.at(-1),end=stamp(event),changes=[...(extra.origin&&stamp(extra.origin)<start?clean(past,ids,stamp(extra.origin),start):[]),...clean(future,ids,start,end)],obstacles=legs.flatMap(e=>obstructions(c,future,e,e.i,e.j,ids));const item={type,via,event,legs,...extra,blocked:[...changes.map(e=>({type:e.type,event:e,detail:H.names[e.i]+(e.type==='station'?' проходит станцию.':' меняет знак.')})),...obstacles]};(item.blocked.length?rejected:paths).push(item);return item;}
- if(q!==s){const e=future.events.find(e=>pair(e,q,s)&&stamp(e)>=start);if(c.primary?.phase==='exact')candidate('direct',[{...c.primary,utc:c.date}],[q,s]);else if(e)candidate('direct',[e],[q,s]);}
- // Moon is a separate route only when it does not already represent either principal.
- if(q!==1&&s!==1&&q!==s){const e=future.events.find(e=>pair(e,1,s)&&stamp(e)>start);if(e)candidate('lunar',[e],[1,s,q],1,{independent:false,preceding:future.events.filter(x=>has(x,1)&&stamp(x)>start&&stamp(x)<stamp(e))});}
+const H=typeof module==='object'?require('./engine'):root.Horar,V=typeof module==='object'?require('./analysis-v2'):root.HorarAnalysisV2,Old=typeof module==='object'?require('./analysis-v3'):root.HorarAnalysisV3;
+const DAY=86400000,ORBS=[17,12.5,7,8,7.5,12,10],time=e=>+new Date(e.utc),has=(e,i)=>e.i===i||e.j===i,pair=(e,i,j)=>has(e,i)&&has(e,j),labels=Old.routeNames;
+const sources=[
+ ['Lilly / Zadkiel, главы 19–21','https://www.globalgreyebooks.com/online-ebooks/william-lilly_introduction-to-astrology_complete-text.html'],
+ ['Deborah Houlding: Identifying Significators','https://www.skyscript.co.uk/horary1a.html'],
+ ['Graeme Tobyn: Perfection and its denial','https://www.skyscript.co.uk/tobyn2.html'],
+ ['Sue Ward: Considerations Before Judgment','https://theastrologypodcast.com/transcripts/tap-ep-296-transcript-the-considerations-before-judgment-with-sue-ward/'],
+ ['Christopher Warnock: Aspects, Orbs & Perfection','https://www.renaissanceastrology.com/aspects.html'],
+ ['Anthony Louis: Lilly on Prohibition','https://tonylouis.wordpress.com/2018/08/08/lilly-on-prohibition-in-horary-astrology/'],
+ ['Lee Lehman: Horary Astrology Questions','https://theastrologypodcast.com/transcripts/ep-116-transcript-horary-astrology-questions-with-lee-lehman/']
+];
+function application(c,i,j,angle){const a=c.planets[i],b=c.planets[j],orb=Math.abs(Math.abs(H.delta(a.lon,b.lon))-angle),limit=(ORBS[i]+ORBS[j])/2;return {i:Math.min(i,j),j:Math.max(i,j),angle,name:H.aspects.find(a=>a.angle===angle).name,orb,limit,...H.aspectMotion(a.lon,b.lon,a.speed,b.speed,angle)};}
+function inApplication(c,i,j,angle){const p=application(c,i,j,angle);return p.orb<=p.limit&&['applying','exact'].includes(p.phase);}
+function currentPairs(c){const out=[];for(let i=0;i<7;i++)for(let j=i+1;j<7;j++)for(const a of H.aspects){const p=application(c,i,j,a.angle);if(p.orb<=p.limit)out.push(p);}return out;}
+function received(c,guest,host){return V.reception(c.planets[guest],c.planets[host],H.sunAboveHorizon(new Date(c.date),c.input.lat,c.input.lon));}
+function firstContact(f,i,start){return f.events.find(e=>has(e,i)&&time(e)>start);}
+// This declared Lilly form needs the interloper's two ordered contacts.
+function interpositions(c,f,event,ids=[]){const start=+new Date(c.date),end=time(event),out=[],a=event.i,b=event.j;if(!inApplication(c,a,b,event.angle))return out;
+ const faster=Math.abs(c.planets[a].speed)>=Math.abs(c.planets[b].speed)?a:b,slower=faster===a?b:a;
+ for(let k=0;k<7;k++){if([a,b,...ids].includes(k))continue;
+  const hit=f.events.find(e=>pair(e,k,slower)&&time(e)>start&&time(e)<end),first=hit&&f.events.find(e=>pair(e,k,faster)&&time(e)>start&&time(e)<time(hit));
+  if(hit&&first&&Math.abs(c.planets[k].speed)>Math.abs(c.planets[faster].speed)&&inApplication(c,k,faster,first.angle)&&inApplication(c,k,slower,hit.angle)&&!f.changes.some(e=>[k,slower,faster].includes(e.i)&&time(e)>start&&time(e)<time(hit)))out.push({type:'prohibition',via:k,event:hit,detail:`${H.names[k]} сначала касается ${H.names[faster]}, затем ${H.names[slower]} раньше их связи.`});
+  else if(hit&&event.angle===0&&hit.angle===0&&Math.abs(c.planets[slower].speed)>Math.abs(c.planets[k].speed)&&inApplication(c,slower,k,0))out.push({type:'frustration',via:k,event:hit,detail:`${H.names[slower]} раньше соединяется с ${H.names[k]}.`});
+ }return out;
+}
+function planPathsV4(c,f,past={events:[],changes:[]},refrenations=[]){const start=+new Date(c.date),q=c.querent,s=c.subject,paths=[],rejected=[],deferred=[];
+ const next=(i,j)=>f.events.find(e=>pair(e,i,j)&&time(e)>start&&inApplication(c,i,j,e.angle));
+ function candidate(type,legs,ids,via=null,extra={}){const end=time(legs.at(-1)),origin=extra.origin,blocked=[...f.changes.filter(e=>e.type==='ingress'&&ids.includes(e.i)&&time(e)>start&&time(e)<end).map(e=>({type:'ingress',event:e,detail:`${H.names[e.i]} меняет знак до контакта.`})),...legs.flatMap(e=>interpositions(c,f,e,ids)),...refrenations.filter(r=>legs.some(e=>pair(r,e.i,e.j)&&r.angle===e.angle)&&time(r.event)<end)];
+  if(origin&&time(origin)<start)blocked.push(...past.changes.filter(e=>ids.includes(e.i)&&time(e)>time(origin)&&time(e)<start).map(e=>({type:e.type,event:e,detail:'Условия изменились после исходного контакта.'})));
+  const item={type,via,legs,event:legs.at(-1),...extra,blocked};(blocked.length?rejected:paths).push(item);return item;
+ }
+ if(q!==s){const exact=c.pairs.find(p=>pair(p,q,s)&&p.phase==='exact'),e=exact?{...exact,utc:c.date}:next(q,s);if(e)candidate('direct',[e],[q,s]);else{const later=f.events.find(e=>pair(e,q,s));if(later)deferred.push({type:'direct',event:later,detail:'Будущий контакт сейчас не является сходящимся аспектом в орбисе.'});}}
+ if(q!==s&&q!==1&&s!==1&&(c.input.actorHouse||1)===1){const e=next(1,s);if(e)candidate('lunar',[e],[1,s],1,{independent:false});}
  if(q!==s)for(let k=0;k<7;k++){if([q,s].includes(k))continue;
- const contacts=future.events.filter(e=>has(e,k)&&stamp(e)>start),history=past.events.filter(e=>has(e,k)&&stamp(e)<start),last=history.at(-1);
- for(const [from,to] of [[q,s],[s,q]]){const next=contacts[0],separating=c.pairs.find(e=>pair(e,k,from)&&e.phase==='separating');
- if(last&&has(last,from)&&separating&&next&&has(next,to)&&Math.abs(c.planets[k].speed)>Math.max(Math.abs(c.planets[q].speed),Math.abs(c.planets[s].speed)))candidate('translation',[next],[k,q,s],k,{origin:last,sequence:'past-present'});
- for(let n=0;n<contacts.length-1;n++){const first=contacts[n],second=contacts[n+1];if(!has(first,from)||!has(second,to))continue;const vi=Math.abs(speed(k,stamp(first))),vf=Math.max(Math.abs(speed(from,stamp(first))),Math.abs(speed(to,stamp(second))));if(vi<=vf)continue;
- // No skipping another contact of the mediator between the two links.
- candidate('translation',[first,second],[k,q,s],k,{origin:first,sequence:'future'});break;}}
- const a=future.events.find(e=>pair(e,q,k)&&stamp(e)>start),b=future.events.find(e=>pair(e,s,k)&&stamp(e)>start);
- if(a&&b&&Math.abs(c.planets[k].speed)<Math.min(Math.abs(c.planets[q].speed),Math.abs(c.planets[s].speed))&&motion(c,q,k,a.angle).phase==='applying'&&motion(c,s,k,b.angle).phase==='applying'){
- const receptionQ=V.reception(c.planets[q],c.planets[k],H.sunAboveHorizon(new Date(c.date),c.input.lat,c.input.lon)),receptionS=V.reception(c.planets[s],c.planets[k],H.sunAboveHorizon(new Date(c.date),c.input.lat,c.input.lon));
- const legs=[a,b].sort((a,b)=>stamp(a)-stamp(b)),item=candidate('collection',legs,[k,q,s],k,{receptions:[receptionQ,receptionS]});
- if(!receptionQ.positive.length||!receptionS.positive.length){item.blocked.push({type:'reception',detail:'Медленный посредник не принимает обе стороны хотя бы по одному достоинству.'});const index=paths.indexOf(item);if(index>=0){paths.splice(index,1);rejected.push(item);}}}}
- const key=p=>[p.type,p.via,p.event.utc,p.origin?.utc].join(':');const unique=a=>a.filter((p,i)=>a.findIndex(x=>key(x)===key(p))===i);return {paths:unique(paths).sort((a,b)=>stamp(a.event)-stamp(b.event)),rejected:unique(rejected)};}
-function mirrorPaths(c,future,longitude=H.longitude){const q=c.querent,s=c.subject;if(q===s)return [];const start=+new Date(c.date),end=start+(c.input.horizon===90?90:30)*DAY,result=[];
- for(const [target,label] of [[180,'Антис'],[0,'Контрантис']]){const initial=H.delta(c.planets[q].lon+c.planets[s].lon,target);if(Math.abs(initial)>1)continue;const rate=c.planets[q].speed+c.planets[s].speed;if(Math.abs(initial)>1e-6&&initial*rate>=0)continue;
- const f=t=>H.delta(longitude(q,new Date(t))+longitude(s,new Date(t)),target);let left=start,e0=f(start),utc=Math.abs(initial)<1e-6?start:null;
- for(let t=start+DAY/4;utc===null&&t<=end;t+=DAY/4){const e1=f(t);if(e0*e1<=0&&Math.abs(e1-e0)<20){let lo=left,hi=t;for(let n=0;n<26&&hi-lo>500;n++){const m=(hi+lo)/2,v=f(m);if(e0*v<=0)hi=m;else{lo=m;e0=v;}}utc=(hi+lo)/2;break;}left=t;e0=e1;}
- if(utc!==null)result.push({type:'antiscia',via:null,strength:'secondary',event:{i:q,j:s,angle:0,name:label,utc:new Date(utc).toISOString()},orb:Math.abs(initial),blocked:clean(future,[q,s],start,utc).map(e=>({type:e.type,event:e,detail:'Изменение условий до зеркального контакта.'}))});}
- return result;}
-const cache=new Map();function enrich(c,provided){if(c.input.analysisVersion!==3)return V.enrich(c,provided);const start=+new Date(c.date),days=c.input.horizon===90?90:30,key=c.date+':'+days;let scans=cache.get(key);if(!scans){scans={future:provided||V.scan(start,days),past:V.scan(start-30*DAY,30)};if(cache.size>5)cache.delete(cache.keys().next().value);cache.set(key,scans);}if(provided)scans={...scans,future:provided};
- V.enrich(c,scans.future);const a=c.analysis,plan=planPaths(c,scans.future,scans.past),mirrors=mirrorPaths(c,scans.future),refranation=refrenations(c,scans.future),q=c.querent,s=c.subject;
- for(const p of mirrors)(p.blocked.length?plan.rejected:plan.paths).push(p);
- const routes=plan.paths.sort((x,y)=>(x.strength==='secondary')-(y.strength==='secondary')||stamp(x.event)-stamp(y.event)),route=routes[0]||null,mutual=q!==s&&a.receptions.length===2&&a.receptions.every(r=>r.strong),evidence=a.evidence.filter(e=>!e.text.startsWith('Прямой аспект:')&&!e.text.startsWith('Передача света:')&&!e.text.startsWith('Собирание света:')&&!e.text.startsWith('Ближайший прямой аспект')&&!e.text.startsWith('До связи сторон:'));
- for(const r of routes)evidence.unshift({direction:'support',text:`${names[r.type]}${r.via!==null?' через '+H.names[r.via]:''}: ${r.origin?'источник '+r.origin.utc+'; ':''}${r.event.name}, ${r.event.utc}.${r.preceding?.length?' До контакта Луны с целью есть промежуточных аспектов: '+r.preceding.length+'. Они описываются отдельно и не считаются автоматическим запретом.':''}`});
- for(const r of plan.rejected)evidence.push({direction:'obstacle',text:`${names[r.type]}${r.via!==null?' через '+H.names[r.via]:''} не подтверждено: ${r.blocked.map(b=>(names[b.type]||b.type)+': '+b.detail).join(' ')}`});
- for(const r of refranation)evidence.push({direction:'obstacle',text:'Рефранация: '+r.detail+' '+r.event.utc});
- if(mutual)evidence.push({direction:'support',text:'Взаимная сильная рецепция: стороны принимают друг друга по обители/экзальтации. Без пути контакта это поддержка, а не доказанная перфекция.'});
- const checks=Object.entries(names).map(([id,label])=>{const found=id==='mutual'?(mutual?[{type:'mutual'}]:[]):id==='refranation'?refranation:id==='prohibition'||id==='frustration'?plan.rejected.flatMap(p=>p.blocked.filter(x=>x.type===id)):routes.filter(p=>p.type===id),blocked=plan.rejected.filter(p=>p.type===id);
- return {id,label,status:found.length?'found':blocked.length?'blocked':'none',count:found.length,detail:found.length?`${label}: найдено ${found.length}.`:blocked.length?blocked.map(p=>p.blocked.map(b=>(names[b.type]||b.type)+': '+b.detail).join(' ')).join(' '):id==='mutual'?'Сильной взаимной рецепции нет.':id==='lunar'?(q===1||s===1?'Луна уже является основным сигнификатором и не считается второй независимой связью.':'Контакт Луны с целью не подтверждён до смены условий.'):id==='antiscia'?'Сходящегося зеркального контакта в исходном орбисе 1° не найдено.':id==='refranation'?'Разворота со сменой схождения на расхождение до точного аспекта не найдено.':`${label}: условие не выполнено в окне ${days} дней.`};});
- let status='unclear',title='Связь не подтверждена после расширенной проверки';if(route){status=route.strength==='secondary'||route.type!=='direct'||evidence.some(e=>e.direction==='obstacle')||[90,180].includes(route.event.angle)?'conditional':'supported';title=status==='supported'?'Есть свидетельства в пользу осуществления':'Найдена связь; осуществление зависит от условий';}else if(mutual){status='reception-only';title='Есть взаимная поддержка, но нет пути осуществления';}else if(plan.rejected.length){status='blocked';title='Найденные пути прерываются до осуществления';}
- if(q===s){status='same';title='У ролей один управитель: связи Луны показаны отдельно, итог требует разделения ролей';}
- if(a.context.intent==='timing')title=route?'Найден путь связи; календарный срок события не установлен':'Срок не определяется: путь связи не подтверждён';
- if(a.context.intent==='open'){status='open';title='Открытый вопрос: показаны связи и препятствия без автоматического «да / нет»';}
- if(a.checks.filter(x=>x.active).length>=4){status='caution';title='Много предостережений: связи найдены, но определённое суждение ненадёжно';if(!route)title='Много предостережений; подтверждённой связи не найдено';}
- const reason=route?`Основание: ${names[route.type]}${route.via!==null?' через '+H.names[route.via]:''}. ${route.event.name}, ${route.event.utc}. ${route.strength==='secondary'?'Это вторичное свидетельство, не равное прямому аспекту.':''}`:`Проверены прямой и лунный контакт, передача (включая будущую цепочку), собирание с рецепциями посредника, взаимная рецепция, антисы; отдельно — запрет, фрустрация и рефранация. ${mutual?'Рецепция поддерживает стороны, но не создаёт контакт.':'Подтверждённого пути осуществления не найдено.'}`;
- c.verdict=title;c.explanation=reason+' Точное время контакта планет не является обещанной датой жизненного события.';Object.assign(a,{version:3,paths:routes.filter(p=>['translation','collection'].includes(p.type)),routes,rejected:plan.rejected,route,mechanisms:checks,refranation,mutual,evidence,status,support:evidence.filter(e=>e.direction==='support').length,obstacles:evidence.filter(e=>e.direction==='obstacle').length,limits:'Правила 1.6: последовательность точных контактов, рецепции посредника, геометрические условия запрета/фрустрации, наблюдаемая смена схождения после станции. Антисы — вторичное свидетельство с исходным орбисом 1°. Рецепция без контакта не считается перфекцией. Поиск ограничен 30/90 днями; касательные контакты между отсчётами могут быть пропущены. Выбранные операционные правила не охватывают все школы, жребии и фиксированные звёзды.'});return c;}
-function upgradeInput(i){H.validate(i);return {...i,analysisVersion:3,topicMode:[2,3].includes(i.analysisVersion)?i.topicMode||'manual':'manual',actorInput:i.actorInput||'1',horizon:i.horizon===90?90:30};}
-const api={...V,enrich,planPaths,mirrorPaths,obstructions,refrenations,upgradeInput,routeNames:names};if(typeof module==='object')module.exports=api;else root.HorarAnalysis=api;
+  const last=past.events.filter(e=>has(e,k)&&time(e)<start).at(-1),first=firstContact(f,k,start);
+  for(const [from,to] of [[q,s],[s,q]]){const separation=c.pairs.find(e=>pair(e,k,from)&&e.phase==='separating');
+   if(last&&has(last,from)&&separation&&first&&has(first,to)&&inApplication(c,k,to,first.angle)&&Math.abs(c.planets[k].speed)>Math.max(Math.abs(c.planets[q].speed),Math.abs(c.planets[s].speed))){
+    const r=received(c,k,from),item=candidate('translation',[first],[k,q,s],k,{origin:last,sequence:'past-present',sourceReception:r});
+    if(!r.positive.some(x=>['domicile','exaltation','triplicity','term'].includes(x))){item.blocked.push({type:'reception',detail:'Источник не принимает переводящую планету по принятому порогу.'});if(paths.includes(item)){paths.splice(paths.indexOf(item),1);rejected.push(item);}}
+   }
+  }
+  const a=next(q,k),b=next(s,k);if(!a||!b||Math.abs(c.planets[k].speed)>=Math.min(Math.abs(c.planets[q].speed),Math.abs(c.planets[s].speed)))continue;
+  const item=candidate('collection',[a,b].sort((a,b)=>time(a)-time(b)),[q,s,k],k),receptions=[received(c,k,q),received(c,k,s)];item.receptions=receptions;
+  if(!receptions.every(r=>r.positive.length)||firstContact(f,q,start)!==a||firstContact(f,s,start)!==b){item.blocked.push({type:'collection-condition',detail:'Обе стороны должны принимать медленного собирателя; он должен получить их первые приложения.'});if(paths.includes(item)){paths.splice(paths.indexOf(item),1);rejected.push(item);}}
+ }
+ for(const r of refrenations)if(pair(r,q,s))rejected.push({type:'direct',event:r.event,legs:[],blocked:[r]});
+ return {paths,rejected,deferred};
+}
+function quality(c,r){if(r.strength==='secondary')return {outcome:'unclear',reason:'Есть только вторичное свидетельство; оно не заменяет основной способ осуществления.'};
+ const states=c.analysis.states,results=r.legs.map(e=>{let from,to;if(r.type==='lunar'){from=1;to=c.subject;}else if(r.type==='translation'){from=r.via;to=e.i===from?e.j:e.i;}else if(r.type==='collection'){to=r.via;from=e.i===to?e.j:e.i;}else {from=Math.abs(c.planets[e.i].speed)>=Math.abs(c.planets[e.j].speed)?e.i:e.j;to=from===e.i?e.j:e.i;}
+  const one=received(c,from,to),two=received(c,to,from),mutual=one.strong&&two.strong,mutualHouse=one.positive.includes('domicile')&&two.positive.includes('domicile'),x=states[from],y=states[to],combust=x.solar==='combust'||y.solar==='combust',weak=[x,y].some(s=>s.score<0||s.retro||s.cadent||s.solar==='beams'),negative=one.negative.length&&two.negative.length;
+  if(e.angle===180)return {outcome:mutualHouse&&!combust?'unclear':'no',reason:mutualHouse&&!combust?'Оппозиция с взаимной рецепцией допускает контакт, но положительный исход неоднозначен.':'Противостояние не имеет достаточного взаимного принятия для положительного итога.'};
+  if(e.angle===90){const strongHouses=x.score>0&&y.score>0&&!x.cadent&&!y.cadent&&!x.retro&&!y.retro;
+   if(combust||(!mutual&&!strongHouses))return {outcome:'no',reason:combust?'Напряжённая связь сочетается с сожжением: оснований считать её успешным исходом недостаточно.':'Напряжённая связь не подкреплена взаимным сильным принятием или устойчивым положением обеих сторон.'};
+   return {outcome:'yes',qualified:true,reason:'Связь трудная, но поддержка сторон позволяет считать осуществление более вероятным по выбранным правилам.'};}
+  if(y.solar==='combust'&&!mutual||negative&&!mutual)return {outcome:'no',reason:y.solar==='combust'?'Принимающая сторона сильно ослаблена, а взаимной поддержки нет.':'Взаимное неблагоприятное отношение не подкрепляет положительный исход.'};
+  return {outcome:'yes',qualified:weak||combust||!!one.negative.length||!!two.negative.length,reason:weak||combust?'Рабочая связь есть, но положение сторон добавляет трудности.':'Найдена сходящаяся связь без решающего препятствия на этом пути.'};
+ });return results.find(x=>x.outcome==='no')||results.find(x=>x.outcome==='unclear')||{outcome:'yes',qualified:results.some(x=>x.qualified),reason:results.map(x=>x.reason).filter((x,i,a)=>a.indexOf(x)===i).join(' ')};
+}
+function judgeRoutes(c,plan){const rated=plan.paths.map(route=>({route,...quality(c,route)})),yes=rated.filter(x=>x.outcome==='yes'),no=rated.filter(x=>x.outcome==='no'),unclear=rated.filter(x=>x.outcome==='unclear');
+ const current=c.pairs.some(p=>pair(p,c.querent,c.subject)&&['applying','exact'].includes(p.phase)),windowLimited=current&&!rated.length&&!plan.rejected.length;
+ if(c.querent===c.subject)return {answer:'unclear',status:'same',route:null,reason:'Основные роли совпали; автоматическая подмена одной из них Луной не выполняется.',rated};
+ if(yes.length){const directNo=no.some(x=>x.route.type==='direct'),chosen=yes.find(x=>x.route.type==='direct')||yes[0];if(directNo)return {answer:'unclear',status:'unclear',route:chosen.route,reason:'Основные показатели и дополнительный путь дают разные выводы; однозначный исход не выбран.',rated};return {answer:'yes',status:chosen.qualified?'conditional':'supported',route:chosen.route,reason:chosen.reason,rated};}
+ if(unclear.length&&(!no.length||unclear.some(x=>x.route.strength!=='secondary')))return {answer:'unclear',status:'unclear',route:unclear[0].route,reason:unclear[0].reason,rated};
+ if(windowLimited)return {answer:'unclear',status:'unclear',route:null,reason:'Есть текущее схождение, но точный контакт не найден в выбранном окне поиска.',rated};
+ return {answer:'no',status:plan.rejected.length||no.length?'blocked':'unsupported',route:no[0]?.route||null,reason:no[0]?.reason||(plan.rejected.length?'Найденные текущие способы связи не проходят проверку условий.':'Текущего способа соединить стороны не найдено: нет подходящего прямого, лунного или посреднического контакта.'),rated};
+}
+const cache=new Map();
+function enrich(c,provided){if(c.input.analysisVersion!==4)return Old.enrich(c,provided);const start=+new Date(c.date),days=c.input.horizon===90?90:30,key=start+':'+days;let scans=cache.get(key);if(!scans){scans={future:provided||V.scan(start,days),past:V.scan(start-30*DAY,30)};if(cache.size>=5)cache.delete(cache.keys().next().value);cache.set(key,scans);}if(provided)scans={...scans,future:provided};
+ c.pairs=currentPairs(c);V.enrich(c,scans.future);const a=c.analysis,refrenation=Old.refrenations(c,scans.future),plan=planPathsV4(c,scans.future,scans.past,refrenation);
+ const mirrors=Old.mirrorPaths(c,scans.future);for(const p of mirrors){p.legs=[p.event];(p.blocked.length?plan.rejected:plan.paths).push(p);}
+ let judgement=judgeRoutes(c,plan),unsupported=/любит|чувству|думает обо|как относится|изменяет|где (?:моя|мой|находится)|кто (?:взял|украл)/iu.test(c.input.question)||/(?:(?:^|[^а-яё])не (?:прид[её]т|состоится|будет|уволят)|избегу|перестанет)/iu.test(c.input.question);
+ if(a.context.intent==='open')judgement={...judgement,answer:'unclear',status:'open',reason:'Вопрос не сводится к наступлению одного события.'};
+ if(unsupported)judgement={...judgement,answer:'unclear',status:'scope',reason:'Этот вопрос об отношении, местонахождении или отрицании события требует другой схемы. Сформулируйте одно проверяемое событие.'};
+ const directPath=plan.paths.find(p=>p.type==='direct')||plan.rejected.find(p=>p.type==='direct');
+ const route=judgement.route,mutual=c.querent!==c.subject&&a.receptions.every(r=>r.strong),evidence=[{direction:judgement.answer==='yes'?'support':judgement.answer==='no'?'obstacle':'neutral',text:judgement.reason}];
+ for(const p of plan.rejected)evidence.push({direction:'neutral',text:`Отклонённый вариант «${labels[p.type]}»: ${[...new Set(p.blocked.map(b=>b.detail))].join(' ')}`});
+ for(const p of plan.deferred)evidence.push({direction:'neutral',text:p.detail});
+ for(const check of a.checks)if(check.id==='seventh'&&c.input.target===7){check.active=false;check.detail='Вопрос относится к VII дому: его состояние описывает предмет вопроса, а не автоматически ошибку астролога.';}
+ const checks=Object.entries(labels).map(([id,label])=>{const found=id==='mutual'?(mutual?[1]:[]):id==='refranation'?refrenation:id==='prohibition'||id==='frustration'?plan.rejected.flatMap(p=>p.blocked.filter(b=>b.type===id)):plan.paths.filter(p=>p.type===id),blocked=plan.rejected.filter(p=>p.type===id);return {id,label,status:found.length?'found':blocked.length?'blocked':'none',count:found.length,detail:found.length?`Найдено: ${found.length}. Геометрия оценивается отдельно от пригодности для положительного исхода.`:blocked.length?[...new Set(blocked.flatMap(p=>p.blocked.map(b=>b.detail)))].join(' '):'Условия выбранной методики не выполнены.'};});
+ c.verdict=judgement.answer==='yes'?(judgement.status==='conditional'?'Скорее да, но с трудностями':'Скорее да'):judgement.answer==='no'?'Скорее нет':'Ответ пока не определяется';c.explanation=judgement.reason;
+ Object.assign(a,{version:4,method:'Традиционная модель 1.7 (явно выбранные правила)',sources,judgement,answer:judgement.answer,status:judgement.status,route,routes:plan.paths,paths:plan.paths.filter(p=>['translation','collection'].includes(p.type)),rejected:plan.rejected,deferred:plan.deferred,mechanisms:checks,refranation:refrenation,mutual,evidence,support:evidence.filter(e=>e.direction==='support').length,obstacles:evidence.filter(e=>e.direction==='obstacle').length,direct:{event:directPath?.event||null,blocked:plan.rejected.filter(p=>p.type==='direct').flatMap(p=>p.blocked.map(b=>b.event||b)),valid:!!directPath&&!directPath.blocked.length},interference:null,limits:'Выбранная формализация традиционного суждения, не универсальное правило всех школ. Египетские термы и дневной/ночной триплицитет; орбисы по сумме половин планетных орбисов. Текущие применения до смены знака; рефранация требует фактического разворота схождения. Строгий перенос с исходной рецепцией; собирание с приёмом собирателя обеими сторонами. Нет голосования количеством признаков и запрета по числу предостережений. Окно 30/90 дней и шаг 6 часов ограничивают поиск; касательные корни могут быть пропущены. Календарные сроки события, местонахождение, чувства, все специальные вопросы и все варианты вмешательства не вычисляются. Это символическая интерпретация, не научно подтверждённый прогноз.'});return c;
+}
+function upgradeInput(i){return {...Old.upgradeInput(i),analysisVersion:4};}
+const api={...Old,enrich,upgradeInput,application,currentPairs,inApplication,planPathsV4,interpositions,quality,judgeRoutes,sources,planetOrbs:ORBS};if(typeof module==='object')module.exports=api;else root.HorarAnalysis=api;
 })(globalThis);

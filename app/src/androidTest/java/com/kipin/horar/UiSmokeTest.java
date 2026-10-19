@@ -59,13 +59,13 @@ public class UiSmokeTest extends Instrumentation {
   runOnMainSync(()->activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));awaitCondition("innerWidth>innerHeight");check("landscape fits viewport","document.documentElement.scrollWidth<=innerWidth+1");check("journal remains after rotation","readEntries().length===1");screenshot("06-landscape");
   runOnMainSync(()->activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));awaitCondition("innerHeight>innerWidth");
   js("page('workspace');document.getElementById('topic-mode').value='auto';document.getElementById('actor-input').value='auto';document.getElementById('question').value='Получу ли я должность?';classifyDraft();document.getElementById('chart-form').requestSubmit()");
-  check("extended question analysis uses job house", "current.input.target===10 && current.analysis.version===3 && current.analysis.checks.length===7");
+  check("extended question analysis uses job house", "current.input.target===10 && current.analysis.version===4 && current.analysis.checks.length===7");
   check("plain and technical verdict agree", "HorarSimple.explain(current).engineVerdict===current.verdict && HorarSimple.explain(current).status===current.analysis.status && document.getElementById('analysis-detail').hidden && document.getElementById('analysis-detail').textContent.includes(current.verdict)");
   js("document.getElementById('actor-input').value='11';classifyDraft();document.getElementById('chart-form').requestSubmit()");
   check("derived job of friend uses eleventh and eighth houses", "current.analysis.actorHouse===11 && current.input.target===8");
   check("all route checks are visible", "current.analysis.mechanisms.length===9 && document.getElementById('analysis-detail').textContent.includes('Рефранация')");
   js("window.legacyInput={...current.input,analysisVersion:1,target:7};delete legacyInput.actorHouse;delete legacyInput.context;render(Horar.calculate(legacyInput));window.legacyDate=current.date;document.getElementById('upgrade-analysis').click()");
-  check("old chart expands without changing question time", "current.analysis.version===3 && current.date===legacyDate && current.input.target===7 && currentId===null");
+  check("old chart expands without changing question time", "current.analysis.version===4 && current.date===legacyDate && current.input.target===7 && currentId===null");
   js("document.getElementById('analysis-detail').scrollIntoView({block:'start',behavior:'instant'})");screenshot("10-extended-analysis");
   js("page('workspace');document.getElementById('question').value='';document.getElementById('chart-form').requestSubmit()");check("required question validation","!document.getElementById('question').checkValidity()");
   result.putString("stream","\n"+results+"HORAR_SMOKE_OK checks="+passed+"\n");finish(Activity.RESULT_OK,result);
