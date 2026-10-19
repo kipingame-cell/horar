@@ -69,8 +69,18 @@ function judgeRoutes(c,plan){const rated=plan.paths.map(route=>({route,...qualit
 }
 // Question semantics are independent of the astronomical scan cache.
 // A timestamp cache may reuse sky positions, never the question's judgement.
+// Incoming contact from an explicitly named partner concerns that person (VII).
+// Do not turn the partner into the querent merely because the question says "мой муж".
+function classify(question){const context=Old.classify(question),t=question.toLowerCase().replace(/ё/g,'е');
+ const contact=/(?:напишет|позвонит|свяжется|выйдет.*на связь)/.test(t),partner=/(?:бывш[а-я]*|партнер[а-я]*|супруг[а-я]*|муж|жена|парень|девушка)(?=$|[^а-я])/.test(t);
+ if(context.kind==='message'&&contact&&partner&&/(?:^|[^а-я])(?:мне|со мной)(?=$|[^а-я])/.test(t))return {...context,kind:'relationship',label:'Контакт с партнёром',house:7,actor:1,actorLabel:'Вы',reason:'Вопрос о контакте с указанным партнёром: вы — I дом, партнёр — VII. Сообщение описывает событие, а не заменяет роль человека III домом.'};
+ return context;
+}
+function prepare(i){if(i.analysisVersion&&i.analysisVersion!==4)return Old.prepare(i);const context=classify(i.question),auto=i.topicMode==='auto',base=auto?(i.actorInput&&i.actorInput!=='auto'?Number(i.actorInput):context.actor):1;
+ return {...i,context,actorHouse:base,target:auto&&context.house?((base+context.house-2)%12)+1:i.target};
+}
 function questionSpec(input){
- const text=input.question.trim(),t=text.toLowerCase().replace(/ё/g,'е'),context=Old.classify(text);
+ const text=input.question.trim(),t=text.toLowerCase().replace(/ё/g,'е'),context=classify(text);
  const temporal=t.match(/(?:в|во|до|после|к|за)\s+(?:конц[аеу]\s+|начал[аеу]\s+)?\d{2,4}\s*(?:году|года|год|г\.)|(?:в|до|после|к)\s+\d{4}(?!\d)|\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|(?:сегодня|послезавтра|завтра|вчера)|(?:через|за|в течение|на протяжении)\s+(?:\d+|один|одну|два|две|три|несколько|пару)\s+(?:час\S*|дн\S*|день|недел\S*|месяц\S*|лет|год\S*)|(?:до|к)\s+(?:конца|началу|середине)\s+(?:недел\S*|месяц\S*|год\S*|лет[ау]|осени|зимы|весны)|(?:в|на|до|к|после)\s+(?:этом|эту|этот|следующем|следующую|следующий|следующей|ближайшем|ближайшую|ближайший|ближайшей)\s+(?:году|год|месяце|месяц|неделе|неделю)|(?:в|до|к|после)\s+(?:понедельник\S*|вторник\S*|сред[уы]|четверг\S*|пятниц\S*|суббот\S*|воскресень\S*)|(?:до|к|после|в)\s+\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+\d{4})?/iu);
  const mortality=/(?:^|[^а-я])(?:умру|умрем|умрет|умрут|умереть|смерть|смерти|погибну|погибнет|погибнем|погибнут|скончаюсь|скончается|доживу|доживет|проживу|проживет)(?:$|[^а-я])|сколько.*(?:жить|прожив|лет жизни)|продолжительность жизни|смертельн/iu.test(t);
  const adverse=/(?:^|[^а-я])не\s+(?:ли\s+)?(?:состо|получ|прид|буд|возьм|найд|поступ|сдам|верн)|сорвет|сорвется|уволят|провалю|развед|расстан|откаж|отменят/iu.test(t);
@@ -108,5 +118,5 @@ function enrich(c,provided){if(c.input.analysisVersion!==4)return Old.enrich(c,p
  Object.assign(a,{version:4,method:'Традиционная модель 1.7 (явно выбранные правила)',sources,judgement,answer:judgement.answer,status:judgement.status,route,routes:plan.paths,paths:plan.paths.filter(p=>['translation','collection'].includes(p.type)),rejected:plan.rejected,deferred:plan.deferred,mechanisms:checks,refranation:refrenation,mutual,evidence,support:evidence.filter(e=>e.direction==='support').length,obstacles:evidence.filter(e=>e.direction==='obstacle').length,direct:{event:directPath?.event||null,blocked:plan.rejected.filter(p=>p.type==='direct').flatMap(p=>p.blocked.map(b=>b.event||b)),valid:!!directPath&&!directPath.blocked.length},interference:null,limits:'Выбранная формализация традиционного суждения, не универсальное правило всех школ. Египетские термы и дневной/ночной триплицитет; орбисы по сумме половин планетных орбисов. Текущие применения до смены знака; рефранация требует фактического разворота схождения. Строгий перенос с исходной рецепцией; собирание с приёмом собирателя обеими сторонами. Нет голосования количеством признаков и запрета по числу предостережений. Окно 30/90 дней и шаг 6 часов ограничивают поиск; касательные корни могут быть пропущены. Календарные сроки события, местонахождение, чувства, все специальные вопросы и все варианты вмешательства не вычисляются. Это символическая интерпретация, не научно подтверждённый прогноз.'});return c;
 }
 function upgradeInput(i){return {...Old.upgradeInput(i),analysisVersion:4};}
-const api={...Old,enrich,upgradeInput,application,currentPairs,inApplication,planPathsV4,interpositions,quality,judgeRoutes,questionSpec,sources,planetOrbs:ORBS};if(typeof module==='object')module.exports=api;else root.HorarAnalysis=api;
+const api={...Old,classify,prepare,enrich,upgradeInput,application,currentPairs,inApplication,planPathsV4,interpositions,quality,judgeRoutes,questionSpec,sources,planetOrbs:ORBS};if(typeof module==='object')module.exports=api;else root.HorarAnalysis=api;
 })(globalThis);
