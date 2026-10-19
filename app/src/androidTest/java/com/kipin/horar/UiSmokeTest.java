@@ -60,7 +60,7 @@ public class UiSmokeTest extends Instrumentation {
   runOnMainSync(()->activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));awaitCondition("innerHeight>innerWidth");
   js("page('workspace');document.getElementById('topic-mode').value='auto';document.getElementById('actor-input').value='auto';document.getElementById('question').value='Получу ли я должность?';classifyDraft();document.getElementById('chart-form').requestSubmit()");
   check("extended question analysis uses job house", "current.input.target===10 && current.analysis.version===3 && current.analysis.checks.length===7");
-  check("plain and technical verdict agree", "HorarSimple.explain(current).title===current.verdict && document.getElementById('analysis-detail').textContent.includes(current.verdict)");
+  check("plain and technical verdict agree", "HorarSimple.explain(current).engineVerdict===current.verdict && HorarSimple.explain(current).status===current.analysis.status && document.getElementById('analysis-detail').hidden && document.getElementById('analysis-detail').textContent.includes(current.verdict)");
   js("document.getElementById('actor-input').value='11';classifyDraft();document.getElementById('chart-form').requestSubmit()");
   check("derived job of friend uses eleventh and eighth houses", "current.analysis.actorHouse===11 && current.input.target===8");
   check("all route checks are visible", "current.analysis.mechanisms.length===9 && document.getElementById('analysis-detail').textContent.includes('Рефранация')");
