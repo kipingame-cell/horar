@@ -39,7 +39,7 @@ public class MainActivity extends Activity {
  public class ShareBridge{
  @JavascriptInterface public void copyLink(String url){if(!validLink(url))return;runOnUiThread(()->{ClipboardManager manager=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);manager.setPrimaryClip(ClipData.newPlainText("Хорар — результат",url));});}
  @JavascriptInterface public void shareLink(String url){if(!validLink(url))return;runOnUiThread(()->{Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_TEXT,url);try{startActivity(Intent.createChooser(i,"Поделиться результатом"));}catch(ActivityNotFoundException e){Toast.makeText(MainActivity.this,"Нет приложения для отправки",Toast.LENGTH_SHORT).show();}});}
- private boolean validLink(String url){return url!=null&&url.length()<18000&&url.startsWith("https://horar-kipin.cherrysong9.chatgpt.site/#result=");}
+ private boolean validLink(String url){return url!=null&&url.length()<18000&&(url.startsWith("https://kipingame-cell.github.io/horar/#result=")||url.startsWith("https://horar-kipin.cherrysong9.chatgpt.site/#result="));}
 
  @JavascriptInterface public void savePdf(String name,String base64){if(base64==null||base64.length()>24000000)return;runOnUiThread(()->{if(pendingExport!=null)return;pendingPdf=true;pendingExport=base64;Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/pdf");i.putExtra(Intent.EXTRA_TITLE,name);try{startActivityForResult(i,101);}catch(ActivityNotFoundException e){pendingExport=null;Toast.makeText(MainActivity.this,"Нет приложения для сохранения PDF",Toast.LENGTH_LONG).show();}});}
 
