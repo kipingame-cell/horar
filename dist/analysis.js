@@ -67,6 +67,17 @@ function judgeRoutes(c,plan){const rated=plan.paths.map(route=>({route,...qualit
  if(windowLimited)return {answer:'unclear',status:'unclear',route:null,reason:'Есть текущее схождение, но точный контакт не найден в выбранном окне поиска.',rated};
  return {answer:'no',status:plan.rejected.length||no.length?'blocked':'unsupported',route:no[0]?.route||null,reason:no[0]?.reason||(plan.rejected.length?'Найденные текущие способы связи не проходят проверку условий.':'Текущего способа соединить стороны не найдено: нет подходящего прямого, лунного или посреднического контакта.'),rated};
 }
+// Question semantics are independent of the astronomical scan cache.
+// A timestamp cache may reuse sky positions, never the question's judgement.
+function questionSpec(input){
+ const text=input.question.trim(),t=text.toLowerCase().replace(/ё/g,'е'),context=Old.classify(text);
+ const temporal=t.match(/(?:в|во|до|после|к|за)\s+(?:конц[аеу]\s+|начал[аеу]\s+)?\d{2,4}\s*(?:году|года|год|г\.)|(?:в|до|после|к)\s+\d{4}(?!\d)|\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|(?:сегодня|послезавтра|завтра|вчера)|(?:через|за|в течение|на протяжении)\s+(?:\d+|один|одну|два|две|три|несколько|пару)\s+(?:час\S*|дн\S*|день|недел\S*|месяц\S*|лет|год\S*)|(?:до|к)\s+(?:конца|началу|середине)\s+(?:недел\S*|месяц\S*|год\S*|лет[ау]|осени|зимы|весны)|(?:в|на|до|к|после)\s+(?:этом|эту|этот|следующем|следующую|следующий|следующей|ближайшем|ближайшую|ближайший|ближайшей)\s+(?:году|год|месяце|месяц|неделе|неделю)|(?:в|до|к|после)\s+(?:понедельник\S*|вторник\S*|сред[уы]|четверг\S*|пятниц\S*|суббот\S*|воскресень\S*)|(?:до|к|после|в)\s+\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+\d{4})?/iu);
+ const mortality=/(?:^|[^а-я])(?:умру|умрем|умрет|умрут|умереть|смерть|смерти|погибну|погибнет|погибнем|погибнут|скончаюсь|скончается|доживу|доживет|проживу|проживет)(?:$|[^а-я])|сколько.*(?:жить|прожив|лет жизни)|продолжительность жизни|смертельн/iu.test(t);
+ const adverse=/(?:^|[^а-я])не\s+(?:ли\s+)?(?:состо|получ|прид|буд|возьм|найд|поступ|сдам|верн)|сорвет|сорвется|уволят|провалю|развед|расстан|откаж|отменят/iu.test(t);
+ const words=t.match(/[а-яa-z]+/giu)||[];
+ const vague=!words.length||words.every(w=>['да','нет','ли','или','ну','а','это','оно','он','она','они','я','мы','получится','будет','сбудется','случится','состоится'].includes(w));
+ return {text,kind:context.kind,topicLabel:context.label,temporal:temporal?{text:temporal[0]}:null,mortality,adverse,vague};
+}
 const cache=new Map();
 function enrich(c,provided){if(c.input.analysisVersion!==4)return Old.enrich(c,provided);const start=+new Date(c.date),days=c.input.horizon===90?90:30,key=start+':'+days;let scans=cache.get(key);if(!scans){scans={future:provided||V.scan(start,days),past:V.scan(start-30*DAY,30)};if(cache.size>=5)cache.delete(cache.keys().next().value);cache.set(key,scans);}if(provided)scans={...scans,future:provided};
  c.pairs=currentPairs(c);V.enrich(c,scans.future);const a=c.analysis,refrenation=Old.refrenations(c,scans.future),plan=planPathsV4(c,scans.future,scans.past,refrenation);
@@ -74,9 +85,13 @@ function enrich(c,provided){if(c.input.analysisVersion!==4)return Old.enrich(c,p
  let judgement=judgeRoutes(c,plan),unsupported=/любит|чувству|думает обо|как относится|изменяет|где (?:моя|мой|находится)|кто (?:взял|украл)/iu.test(c.input.question)||/(?:(?:^|[^а-яё])не (?:прид[её]т|состоится|будет|уволят)|избегу|перестанет)/iu.test(c.input.question);
  if(a.context.intent==='open')judgement={...judgement,answer:'unclear',status:'open',reason:'Вопрос не сводится к наступлению одного события.'};
  if(unsupported)judgement={...judgement,answer:'unclear',status:'scope',reason:'Этот вопрос об отношении, местонахождении или отрицании события требует другой схемы. Сформулируйте одно проверяемое событие.'};
- const words=c.input.question.toLowerCase().replace(/ё/g,'е').match(/[а-яa-z]+/giu)||[];
- const vague=!words.length||words.every(w=>['да','нет','ли','или','ну','а','это','оно','он','она','они','я','мы','получится','будет','сбудется','случится','состоится'].includes(w));
- if(vague)judgement={...judgement,answer:'unclear',status:'question',route:null,reason:'Не указано событие: уточните, что должно произойти и с кем.'};
+ const spec=questionSpec(c.input);a.questionSpec=spec;
+ const abstain=(status,reason)=>{judgement={...judgement,answer:'unclear',status,route:null,reason};};
+ if(spec.temporal||a.context.intent==='timing')abstain('time-scope',spec.temporal?`В вопросе указан срок «${spec.temporal.text}». Расчёт не проверяет наступление события в этот период, поэтому ответ «да» или «нет» не вынесен.`:'Запрошен срок события. Этот расчёт не переводит движения планет в календарную дату, поэтому дата не определена.');
+ if(!spec.kind&&c.input.topicMode==='auto')abstain('topic','Тема вопроса не распознана. Ранее выбранный дом не используется как основание ответа: уточните тему вручную.');
+ if(spec.adverse)abstain('scope','Вопрос сформулирован об отмене, отказе, отрицании или другом неблагоприятном событии. Общая схема достижения цели не отвечает на него и не переворачивает автоматически «да» в «нет».');
+ if(spec.vague)abstain('question','Не указано событие: уточните, что должно произойти и с кем.');
+ if(spec.mortality)abstain('mortality','Расчёт не определяет смерть, продолжительность жизни или вероятность дожить до указанного года.'+(spec.temporal?' Запрошенный срок: «'+spec.temporal.text+'».':''));
  const directPath=plan.paths.find(p=>p.type==='direct')||plan.rejected.find(p=>p.type==='direct');
  const route=judgement.route,mutual=c.querent!==c.subject&&a.receptions.every(r=>r.strong),evidence=[{direction:judgement.answer==='yes'?'support':judgement.answer==='no'?'obstacle':'neutral',text:judgement.reason}];
  for(const p of plan.rejected)evidence.push({direction:'neutral',text:`Отклонённый вариант «${labels[p.type]}»: ${[...new Set(p.blocked.map(b=>b.detail))].join(' ')}`});
@@ -87,8 +102,11 @@ function enrich(c,provided){if(c.input.analysisVersion!==4)return Old.enrich(c,p
  c.receptions=a.receptions.map(r=>`Принимающая планета: ${H.names[r.host]}; принимаемая: ${H.names[r.guest]}. Поддержка: ${r.positive.map(k=>dignityNames[k]||k).join(', ')||'не найдена'}.`+(r.negative.length?' Негативная рецепция: '+r.negative.map(k=>dignityNames[k]||k).join(', ')+'.':''));
  const checks=Object.entries(labels).map(([id,label])=>{const found=id==='mutual'?(mutual?[1]:[]):id==='refranation'?refrenation:id==='prohibition'||id==='frustration'?plan.rejected.flatMap(p=>p.blocked.filter(b=>b.type===id)):plan.paths.filter(p=>p.type===id),blocked=plan.rejected.filter(p=>p.type===id);return {id,label,status:found.length?'found':blocked.length?'blocked':'none',count:found.length,detail:found.length?`Найдено: ${found.length}. Геометрия оценивается отдельно от пригодности для положительного исхода.`:blocked.length?[...new Set(blocked.flatMap(p=>p.blocked.map(b=>b.detail)))].join(' '):'В текущей карте этот признак не найден.'};});
  c.verdict=judgement.answer==='yes'?(judgement.status==='conditional'?'Скорее да, но с трудностями':'Скорее да'):judgement.answer==='no'?'Скорее нет':'Ответ пока не определяется';c.explanation=judgement.reason;
+ if(judgement.status==='mortality')c.verdict='Продолжительность жизни не определяется';
+ if(judgement.status==='time-scope')c.verdict='Ответ для указанного срока не рассчитан';
+ if(judgement.status==='topic')c.verdict='Уточните тему вопроса';
  Object.assign(a,{version:4,method:'Традиционная модель 1.7 (явно выбранные правила)',sources,judgement,answer:judgement.answer,status:judgement.status,route,routes:plan.paths,paths:plan.paths.filter(p=>['translation','collection'].includes(p.type)),rejected:plan.rejected,deferred:plan.deferred,mechanisms:checks,refranation:refrenation,mutual,evidence,support:evidence.filter(e=>e.direction==='support').length,obstacles:evidence.filter(e=>e.direction==='obstacle').length,direct:{event:directPath?.event||null,blocked:plan.rejected.filter(p=>p.type==='direct').flatMap(p=>p.blocked.map(b=>b.event||b)),valid:!!directPath&&!directPath.blocked.length},interference:null,limits:'Выбранная формализация традиционного суждения, не универсальное правило всех школ. Египетские термы и дневной/ночной триплицитет; орбисы по сумме половин планетных орбисов. Текущие применения до смены знака; рефранация требует фактического разворота схождения. Строгий перенос с исходной рецепцией; собирание с приёмом собирателя обеими сторонами. Нет голосования количеством признаков и запрета по числу предостережений. Окно 30/90 дней и шаг 6 часов ограничивают поиск; касательные корни могут быть пропущены. Календарные сроки события, местонахождение, чувства, все специальные вопросы и все варианты вмешательства не вычисляются. Это символическая интерпретация, не научно подтверждённый прогноз.'});return c;
 }
 function upgradeInput(i){return {...Old.upgradeInput(i),analysisVersion:4};}
-const api={...Old,enrich,upgradeInput,application,currentPairs,inApplication,planPathsV4,interpositions,quality,judgeRoutes,sources,planetOrbs:ORBS};if(typeof module==='object')module.exports=api;else root.HorarAnalysis=api;
+const api={...Old,enrich,upgradeInput,application,currentPairs,inApplication,planPathsV4,interpositions,quality,judgeRoutes,questionSpec,sources,planetOrbs:ORBS};if(typeof module==='object')module.exports=api;else root.HorarAnalysis=api;
 })(globalThis);

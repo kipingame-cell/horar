@@ -42,6 +42,7 @@ step('8. Итог и его основания',c.verdict+'. '+c.explanation,a.e
 function modern(c){
  const a=c.analysis,q=c.planets[c.querent],s=c.planets[c.subject],route=a.route;
  const step=(title,fact,meaning,limit)=>({title,fact,meaning,limit});
+ if(['mortality','time-scope','question','topic','scope','open'].includes(a.status))return [step('Почему итог не вынесен',a.judgement.reason,'Карта ниже показывает положения небесных тел. Общая оценка контактов не подменяет ответ на этот вопрос.','Смена формулировки, года или выбранного дома не устраняет это ограничение.')];
  const found=(a.mechanisms||[]).filter(m=>m.status==='found').map(m=>m.label),blocked=(a.mechanisms||[]).filter(m=>m.status==='blocked').map(m=>m.label);
  const current=(c.pairs||[]).filter(e=>(e.i===q.i&&e.j===s.i||e.i===s.i&&e.j===q.i)&&['applying','exact'].includes(e.phase));
  const pathName={direct:'прямой контакт',lunar:'контакт Луны с показателем цели',translation:'передача света',collection:'собирание света',antiscia:'антис'};
